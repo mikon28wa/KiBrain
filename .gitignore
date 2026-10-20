@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+
+# Environment files
+.env
+
+# Logs
+*.log
+
+# Web app (separate package)
+web/node_modules/
+web/dist/
+
+# Extension (separate package)
+extension/node_modules/
+extension/dist/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

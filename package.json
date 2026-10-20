@@ -1,0 +1,44 @@
+{
+  "name": "kibrain",
+  "version": "0.1.0",
+  "description": "KiBrain backend - Fastify API, Drizzle ORM (MySQL), auth and MCP modules.",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "dotenv": "^18.0.8",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
+    "mysql2": "^3.24.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/bcrypt": "^6.0.0",
+    "@types/node": "^26.6.5",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^3.2.7"
+  },
+  "allowScripts": {
+    "esbuild@0.18.20": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true,
+    "bcrypt@6.0.0": true
+  }
+}
