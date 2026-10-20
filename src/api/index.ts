@@ -8,6 +8,7 @@ import {
   createAuthService,
   hashPassword,
   type AuthService,
+  type AuthUser,
 } from '../auth';
 import { createDrizzleAuthRepository } from '../auth/repository';
 import {
@@ -28,12 +29,15 @@ import {
   type ApiTokenService,
 } from './tokenAuth';
 import { createDrizzleChatRepository, deriveChatTitle, type ChatRepository } from './chats';
+import { prepareChat, DEFAULT_MAX_TOKENS } from './preparation';
 import {
   createDrizzlePasswordResetRepository,
   createPasswordResetService,
   type PasswordResetService,
 } from '../auth/passwordReset';
 import { createSmtpMailer, smtpConfigFromEnv } from '../auth/mailer';
+import { createDrizzleExportRepository, type ExportRepository } from '../account/export';
+import { createDeletionService, createDrizzleDeletionRepository, type DeletionService } from '../account/deletion';
 
 interface CredentialsBody {
   email?: string;
@@ -64,6 +68,8 @@ export function buildApp(
   passwordResetService?: PasswordResetService,
   apiTokenService?: ApiTokenService,
   chatRepository?: ChatRepository,
+  exportRepository?: ExportRepository,
+  deletionService?: DeletionService,
 ) {
   const app = Fastify({ logger: false, bodyLimit: MAX_REQUEST_BODY_BYTES });
   app.register(cookie);
@@ -80,6 +86,8 @@ export function buildApp(
   const imports = importManager ?? createDrizzleImportTransactionManager();
   const apiTokens = apiTokenService ?? createApiTokenService(createDrizzleApiTokenRepository());
   const chats = chatRepository ?? createDrizzleChatRepository();
+  const exportRepo = exportRepository ?? createDrizzleExportRepository();
+  const deletion = deletionService ?? createDeletionService(createDrizzleDeletionRepository());
   const passwordReset =
     passwordResetService ??
     createPasswordResetService({
@@ -132,6 +140,16 @@ export function buildApp(
       throw new ApiError(403, `Token is missing the required "${scope}" scope.`);
     }
     return principal;
+  }
+
+  // Session-cookie helper for account-scoped endpoints (export, deletion).
+  async function requireSession(request: FastifyRequest): Promise<AuthUser> {
+    const token = request.cookies?.[SESSION_COOKIE_NAME];
+    const user = token ? await auth.getUserBySessionToken(token) : null;
+    if (!user) {
+      throw new ApiError(401, 'Unauthorized');
+    }
+    return user;
   }
 
   // Routes are registered inside `after` so the rate-limit plugin (registered
@@ -296,6 +314,43 @@ export function buildApp(
       },
     );
 
+    // Full account export (session auth): all chats including tags and messages.
+    app.get('/account/export', async (request) => {
+      const user = await requireSession(request);
+      const account = await exportRepo.findUserById(user.id);
+      const chatList = await exportRepo.listChats(user.id);
+      return {
+        user: account ?? { id: user.id, email: user.email },
+        exportedAt: new Date(),
+        chats: chatList,
+      };
+    });
+
+    // Per-chat export (session auth).
+    app.get('/account/export/chats/:id', async (request) => {
+      const user = await requireSession(request);
+      const { id } = request.params as { id: string };
+      const chat = await exportRepo.getChat(user.id, id);
+      if (!chat) {
+        throw new ApiError(404, 'Chat not found.');
+      }
+      return chat;
+    });
+
+    // Request account deletion: locks the account immediately.
+    app.post('/account/deletion/request', async (request, reply) => {
+      const user = await requireSession(request);
+      const result = await deletion.requestDeletion(user.id);
+      return reply.code(200).send({ requestedAt: result.requestedAt });
+    });
+
+    // Revoke a pending deletion request (within the 30-day grace period).
+    app.post('/account/deletion/revoke', async (request, reply) => {
+      const user = await requireSession(request);
+      const result = await deletion.revokeDeletion(user.id);
+      return reply.code(200).send({ revoked: result.revoked });
+    });
+
     // POST /api/v1/chats — save/upsert (scope: save).
     app.post('/api/v1/chats', async (request, reply) => {
       const principal = await requireScope(request, 'save');
@@ -341,8 +396,9 @@ export function buildApp(
       );
     });
 
-    // GET /api/v1/chats/:id — raw chat data (scope: retrieve).
-    app.get('/api/v1/chats/:id', async (request) => {
+    // GET /api/v1/chats/:id — raw chat data; with ?prepared=true returns the
+    // deterministic prepared form (no AI calls).
+    app.get('/api/v1/chats/:id', async (request, reply) => {
       const principal = await requireScope(request, 'retrieve');
       const { id } = request.params as { id: string };
       const chat = await chats.getById(
@@ -353,7 +409,25 @@ export function buildApp(
       if (!chat) {
         throw new ApiError(404, 'Chat not found.');
       }
-      return chat;
+
+      const query = request.query as { prepared?: string; max_tokens?: string };
+      if (query.prepared !== 'true') {
+        return chat;
+      }
+
+      let maxTokens = DEFAULT_MAX_TOKENS;
+      if (query.max_tokens !== undefined) {
+        if (!/^\d+$/.test(query.max_tokens)) {
+          return reply.code(400).send({ error: 'max_tokens must be a non-negative integer.' });
+        }
+        const parsed = Number(query.max_tokens);
+        if (!Number.isSafeInteger(parsed) || parsed < 0) {
+          return reply.code(400).send({ error: 'max_tokens must be a non-negative integer.' });
+        }
+        maxTokens = parsed;
+      }
+
+      return prepareChat(chat, { maxTokens });
     });
 
   });

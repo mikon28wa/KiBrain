@@ -4,7 +4,7 @@ import { MAX_MESSAGE_BYTES } from '../src/api/validation';
 import type { AuthUser } from '../src/auth';
 import { createInMemoryImportManager, createMockAuthService } from './import-helpers';
 
-const userA: AuthUser = { id: 'user-a', email: 'a@example.com', passwordHash: 'hash' };
+const userA: AuthUser = { id: 'user-a', email: 'a@example.com', passwordHash: 'hash', deletionRequestedAt: null };
 
 const validBody = {
   email: 'a@example.com',

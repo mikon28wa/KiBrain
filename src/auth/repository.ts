@@ -14,20 +14,20 @@ export function createDrizzleAuthRepository(database = db): AuthRepository {
       const rows = await database.select().from(users).where(eq(users.email, email)).limit(1);
       const row = rows[0];
       if (!row) return null;
-      return { id: row.id, email: row.email, passwordHash: row.passwordHash };
+      return { id: row.id, email: row.email, passwordHash: row.passwordHash, deletionRequestedAt: row.deletionRequestedAt };
     },
 
     async findUserById(id) {
       const rows = await database.select().from(users).where(eq(users.id, id)).limit(1);
       const row = rows[0];
       if (!row) return null;
-      return { id: row.id, email: row.email, passwordHash: row.passwordHash };
+      return { id: row.id, email: row.email, passwordHash: row.passwordHash, deletionRequestedAt: row.deletionRequestedAt };
     },
 
     async createUser(email, passwordHash) {
       const id = randomUUID();
       await database.insert(users).values({ id, email, passwordHash });
-      return { id, email, passwordHash };
+      return { id, email, passwordHash, deletionRequestedAt: null };
     },
 
     async findSessionByTokenHash(tokenHash) {

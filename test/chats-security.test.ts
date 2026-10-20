@@ -156,16 +156,31 @@ describe('injection resistance', () => {
 });
 
 describe('rate limiting', () => {
-  it('limits a token to 60 requests/minute and returns Retry-After', async () => {
+  it('allows 60 requests and returns 429 with Retry-After on the 61st', async () => {
     const { app } = buildSecurityApp();
 
-    let response;
-    for (let i = 0; i < 61; i++) {
-      response = await app.inject({ method: 'GET', url: '/api/v1/chats', headers: auth(RETRIEVE_A) });
+    for (let i = 0; i < 60; i++) {
+      const response = await app.inject({ method: 'GET', url: '/api/v1/chats', headers: auth(RETRIEVE_A) });
+      expect(response.statusCode).toBe(200);
     }
 
-    expect(response.statusCode).toBe(429);
-    expect(response.headers['retry-after']).toBeTruthy();
+    const rejected = await app.inject({ method: 'GET', url: '/api/v1/chats', headers: auth(RETRIEVE_A) });
+    expect(rejected.statusCode).toBe(429);
+    expect(rejected.headers['retry-after']).toBeTruthy();
+    expect(Number(rejected.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
+  it('applies the 60/minute limit independently per token', async () => {
+    const { app } = buildSecurityApp();
+
+    // Exhaust token A's budget.
+    for (let i = 0; i < 61; i++) {
+      await app.inject({ method: 'GET', url: '/api/v1/chats', headers: auth(RETRIEVE_A) });
+    }
+
+    // A different token still has its own 60/minute budget.
+    const response = await app.inject({ method: 'GET', url: '/api/v1/chats', headers: auth(RETRIEVE_B) });
+    expect(response.statusCode).toBe(200);
   });
 });
 

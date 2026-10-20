@@ -30,7 +30,7 @@ export function createInMemoryAuthRepository(): InMemoryAuthRepository {
       if (users.has(email)) {
         throw new Error('duplicate email');
       }
-      const user: AuthUser = { id: `user-${++userSeq}`, email, passwordHash };
+      const user: AuthUser = { id: `user-${++userSeq}`, email, passwordHash, deletionRequestedAt: null };
       users.set(email, user);
       return user;
     },

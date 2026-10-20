@@ -98,6 +98,8 @@ export interface AuthUser {
   id: string;
   email: string;
   passwordHash: string;
+  /** When set, the account is locked pending deletion. */
+  deletionRequestedAt: Date | null;
 }
 
 export interface AuthSession {
@@ -123,7 +125,7 @@ export type RegisterResult =
 
 export type LoginResult =
   | { ok: true; token: string; expiresAt: Date }
-  | { ok: false; error: { code: 'INVALID_CREDENTIALS'; message: string } };
+  | { ok: false; error: { code: 'INVALID_CREDENTIALS' | 'ACCOUNT_LOCKED'; message: string } };
 
 export interface AuthService {
   register(email: string, password: string): Promise<RegisterResult>;
@@ -173,6 +175,13 @@ export function createAuthService(repository: AuthRepository): AuthService {
         return {
           ok: false,
           error: { code: 'INVALID_CREDENTIALS', message: 'E-Mail oder Passwort ist falsch' },
+        };
+      }
+
+      if (user.deletionRequestedAt) {
+        return {
+          ok: false,
+          error: { code: 'ACCOUNT_LOCKED', message: 'Account is locked for deletion' },
         };
       }
 
