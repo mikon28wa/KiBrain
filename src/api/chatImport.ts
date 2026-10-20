@@ -105,7 +105,14 @@ export function importChatForOwner(
   });
 }
 
-/** Drizzle-backed transaction manager using a single MySQL transaction. */
+/**
+ * Drizzle-backed transaction manager using a single MySQL transaction.
+ *
+ * Every operation in the returned store MUST use the transaction-scoped `tx`
+ * handle passed to the callback — never the outer `db`/`database` instance.
+ * Using the outer instance would run the write outside the transaction on a
+ * separate pooled connection and make it survive a rollback (orphaned rows).
+ */
 export function createDrizzleImportTransactionManager(database = db): ImportTransactionManager {
   return {
     run(fn) {

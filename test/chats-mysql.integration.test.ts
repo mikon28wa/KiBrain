@@ -92,7 +92,11 @@ describe.skipIf(!RUN)('chats repository (MySQL)', () => {
     expect(chats).toHaveLength(1);
     expect(chats[0].title).toBe('Second');
 
-    const messages = await db.select().from(schema.messages).where(eq(schema.messages.chatId, first.chatId));
+    const messages = await db
+      .select()
+      .from(schema.messages)
+      .where(eq(schema.messages.chatId, first.chatId))
+      .orderBy(schema.messages.sequenceOrder);
     expect(messages.map((m) => m.content)).toEqual(['two', 'three']);
 
     const tags = await db.select().from(schema.chatTags).where(eq(schema.chatTags.chatId, first.chatId));

@@ -138,8 +138,14 @@ describe.skipIf(!RUN)('MySQL integration', () => {
     const email = `rollback_${Date.now()}@example.com`;
     const manager = createDrizzleImportTransactionManager(db);
 
+    // Prior tests share this database, so snapshot counts instead of asserting
+    // the whole table is empty.
+    const chatsBefore = (await db.select().from(schema.chats)).length;
+    const messagesBefore = (await db.select().from(schema.messages)).length;
+    const tagsBefore = (await db.select().from(schema.chatTags)).length;
+
     // Duplicate tags within one chat violate UNIQUE(chat_id, tag), forcing the
-    // transaction to fail after the user and chat were already written.
+    // transaction to fail after the user, chat and messages were already written.
     await expect(
       registerAndImport(manager, {
         email,
@@ -150,12 +156,12 @@ describe.skipIf(!RUN)('MySQL integration', () => {
       }),
     ).rejects.toThrow();
 
-    // The transaction must have rolled back every write.
+    // The transaction must have rolled back every write: the user is gone and
+    // the chat/message/tag counts are unchanged.
     const users = await db.select().from(schema.users).where(eq(schema.users.email, email));
     expect(users).toHaveLength(0);
-    const chats = await db.select().from(schema.chats);
-    expect(chats).toHaveLength(0);
-    const messages = await db.select().from(schema.messages);
-    expect(messages).toHaveLength(0);
+    expect(await db.select().from(schema.chats)).toHaveLength(chatsBefore);
+    expect(await db.select().from(schema.messages)).toHaveLength(messagesBefore);
+    expect(await db.select().from(schema.chatTags)).toHaveLength(tagsBefore);
   });
 });
