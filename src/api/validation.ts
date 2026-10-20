@@ -214,3 +214,170 @@ export function validateBrainChatV1(
 
   return { ok: true, value: payload as unknown as BrainChatV1Payload };
 }
+
+// ---------------------------------------------------------------------------
+// /api/v1/chats (save scope) payload validation
+// ---------------------------------------------------------------------------
+
+export interface ChatMessagePayload {
+  role: string;
+  content: string;
+}
+
+export interface ChatSavePayload {
+  sourceProvider: string;
+  sourceChatId: string;
+  title?: string;
+  messages: ChatMessagePayload[];
+  tags?: string[];
+}
+
+/** Maximum length of `source_provider` (mirrors the chats column size). */
+export const MAX_SOURCE_PROVIDER_LENGTH = 100;
+
+/** Maximum length of `source_chat_id` (mirrors the chats column size). */
+export const MAX_SOURCE_CHAT_ID_LENGTH = 255;
+
+/** Maximum length of `title` (mirrors the chats column size). */
+export const MAX_TITLE_LENGTH = 255;
+
+export type ChatSaveValidationResult =
+  | {
+      ok: true;
+      value: {
+        sourceProvider: string;
+        sourceChatId: string;
+        title?: string;
+        messages: ChatMessagePayload[];
+        tags: string[];
+      };
+    }
+  | { ok: false; errors: ValidationError[] };
+
+/**
+ * Validate a `POST /api/v1/chats` payload. Enforces required source fields,
+ * an optional title, a non-empty `messages` array with per-message (100 KB)
+ * and whole-chat (10 MB) size limits, and optional tags (≤ 64 chars, de-duped
+ * to honour UNIQUE(chat_id, tag)).
+ */
+export function validateChatSave(payload: unknown): ChatSaveValidationResult {
+  const errors: ValidationError[] = [];
+
+  if (!isObject(payload)) {
+    return { ok: false, errors: [{ field: 'payload', message: 'payload must be an object' }] };
+  }
+
+  const sourceProvider = payload.sourceProvider;
+  if (typeof sourceProvider !== 'string' || sourceProvider.trim() === '') {
+    errors.push({ field: 'sourceProvider', message: 'sourceProvider is required' });
+  } else if (sourceProvider.length > MAX_SOURCE_PROVIDER_LENGTH) {
+    errors.push({
+      field: 'sourceProvider',
+      message: `sourceProvider must be at most ${MAX_SOURCE_PROVIDER_LENGTH} characters long`,
+    });
+  }
+
+  const sourceChatId = payload.sourceChatId;
+  if (typeof sourceChatId !== 'string' || sourceChatId.trim() === '') {
+    errors.push({ field: 'sourceChatId', message: 'sourceChatId is required' });
+  } else if (sourceChatId.length > MAX_SOURCE_CHAT_ID_LENGTH) {
+    errors.push({
+      field: 'sourceChatId',
+      message: `sourceChatId must be at most ${MAX_SOURCE_CHAT_ID_LENGTH} characters long`,
+    });
+  }
+
+  let title: string | undefined;
+  if (payload.title !== undefined) {
+    if (typeof payload.title !== 'string') {
+      errors.push({ field: 'title', message: 'title must be a string' });
+    } else if (payload.title.length > MAX_TITLE_LENGTH) {
+      errors.push({ field: 'title', message: `title must be at most ${MAX_TITLE_LENGTH} characters long` });
+    } else {
+      title = payload.title;
+    }
+  }
+
+  const rawMessages = payload.messages;
+  const validatedMessages: ChatMessagePayload[] = [];
+  if (!Array.isArray(rawMessages)) {
+    errors.push({ field: 'messages', message: 'messages is required and must be an array' });
+  } else if (rawMessages.length === 0) {
+    errors.push({ field: 'messages', message: 'messages must not be empty' });
+  } else {
+    let chatBytes = 0;
+    for (let i = 0; i < rawMessages.length; i++) {
+      const message = rawMessages[i];
+      if (!isObject(message)) {
+        errors.push({ field: `messages[${i}]`, message: 'message must be an object' });
+        continue;
+      }
+
+      if (typeof message.role !== 'string' || message.role.trim() === '') {
+        errors.push({ field: `messages[${i}].role`, message: 'role is required' });
+      } else if (!ALLOWED_ROLES.includes(message.role)) {
+        errors.push({
+          field: `messages[${i}].role`,
+          message: `role must be one of: ${ALLOWED_ROLES.join(', ')}`,
+        });
+      }
+
+      if (typeof message.content !== 'string') {
+        errors.push({ field: `messages[${i}].content`, message: 'content is required' });
+      } else if (message.content.trim() === '') {
+        errors.push({ field: `messages[${i}].content`, message: 'content must not be empty' });
+      } else {
+        const size = byteLength(message.content);
+        chatBytes += size;
+        if (size > MAX_MESSAGE_BYTES) {
+          errors.push({
+            field: `messages[${i}].content`,
+            message: 'content must not exceed 100 KB',
+          });
+        }
+      }
+
+      if (typeof message.role === 'string' && typeof message.content === 'string') {
+        validatedMessages.push({ role: message.role, content: message.content });
+      }
+    }
+
+    if (chatBytes > MAX_CHAT_BYTES) {
+      errors.push({ field: 'messages', message: 'Chat must not exceed 10 MB' });
+    }
+  }
+
+  let tags: string[] = [];
+  if (payload.tags !== undefined) {
+    if (!Array.isArray(payload.tags)) {
+      errors.push({ field: 'tags', message: 'tags must be an array' });
+    } else {
+      for (let i = 0; i < payload.tags.length; i++) {
+        const tag = payload.tags[i];
+        if (typeof tag !== 'string') {
+          errors.push({ field: `tags[${i}]`, message: 'tag must be a string' });
+        } else if (tag.length > MAX_TAG_LENGTH) {
+          errors.push({ field: `tags[${i}]`, message: 'tag must be at most 64 characters long' });
+        } else if (!tags.includes(tag)) {
+          tags.push(tag);
+        }
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, errors };
+  }
+
+  return {
+    ok: true,
+    value: {
+      sourceProvider: sourceProvider as string,
+      sourceChatId: sourceChatId as string,
+      title,
+      messages: validatedMessages,
+      tags,
+    },
+  };
+}
+

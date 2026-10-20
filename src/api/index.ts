@@ -17,7 +17,17 @@ import {
   registerAndImport,
   type ImportTransactionManager,
 } from './chatImport';
-import { MAX_REQUEST_BODY_BYTES, isValidEmail, validateBrainChatV1, validatePassword } from './validation';
+import { MAX_REQUEST_BODY_BYTES, isValidEmail, validateBrainChatV1, validateChatSave, validatePassword } from './validation';
+import { ApiError } from './errors';
+import {
+  createApiTokenService,
+  createDrizzleApiTokenRepository,
+  extractBearerToken,
+  hashApiToken,
+  type ApiTokenAuth,
+  type ApiTokenService,
+} from './tokenAuth';
+import { createDrizzleChatRepository, deriveChatTitle, type ChatRepository } from './chats';
 import {
   createDrizzlePasswordResetRepository,
   createPasswordResetService,
@@ -31,12 +41,13 @@ interface CredentialsBody {
 }
 
 /**
- * Rate-limit key for pre-auth endpoints. These endpoints have no API token yet,
- * so they are limited per client IP. (Prompt 8 will add a global
- * 60/minute-per-API-token limit for authenticated routes; these per-route
- * overrides will coexist with it.)
+ * Rate-limit key. Authenticated API requests are limited per API token;
+ * everything else (pre-auth endpoints, health) falls back to the client IP.
  */
-const ipKeyGenerator = (request: FastifyRequest): string => request.ip || 'unknown';
+const rateLimitKeyGenerator = (request: FastifyRequest): string => {
+  const token = extractBearerToken(request);
+  return token ? hashApiToken(token) : request.ip || 'unknown';
+};
 
 /** Tighter limit for pre-auth endpoints (login, registration, password reset). */
 const AUTH_RATE_LIMIT = { max: 5, timeWindow: '1 minute' };
@@ -44,25 +55,31 @@ const AUTH_RATE_LIMIT = { max: 5, timeWindow: '1 minute' };
 /**
  * Build the Fastify application instance without starting it.
  *
- * `authService` and `importManager` can be injected for testing; by default
- * drizzle-backed implementations are used.
+ * Services can be injected for testing; by default drizzle-backed
+ * implementations are used.
  */
 export function buildApp(
   authService?: AuthService,
   importManager?: ImportTransactionManager,
   passwordResetService?: PasswordResetService,
+  apiTokenService?: ApiTokenService,
+  chatRepository?: ChatRepository,
 ) {
   const app = Fastify({ logger: false, bodyLimit: MAX_REQUEST_BODY_BYTES });
   app.register(cookie);
   app.register(rateLimit, {
-    // No global default yet; auth endpoints opt in below with a per-route,
-    // per-IP limit. (Prompt 8 will add a global 60/minute-per-API-token limit.)
-    global: false,
-    keyGenerator: ipKeyGenerator,
+    // Global 60/minute limit. Authenticated routes are keyed per API token,
+    // pre-auth routes per IP (their per-route override below still applies).
+    global: true,
+    max: 60,
+    timeWindow: '1 minute',
+    keyGenerator: rateLimitKeyGenerator,
   });
 
   const auth = authService ?? createAuthService(createDrizzleAuthRepository());
   const imports = importManager ?? createDrizzleImportTransactionManager();
+  const apiTokens = apiTokenService ?? createApiTokenService(createDrizzleApiTokenRepository());
+  const chats = chatRepository ?? createDrizzleChatRepository();
   const passwordReset =
     passwordResetService ??
     createPasswordResetService({
@@ -71,6 +88,51 @@ export function buildApp(
       hashPassword,
       baseUrl: process.env.APP_BASE_URL,
     });
+
+  // Central error handler: meaningful, client-safe messages + status codes.
+  app.setErrorHandler((error, request, reply) => {
+    if (error instanceof ApiError) {
+      return reply.code(error.statusCode).send({ error: error.message });
+    }
+
+    const statusCode =
+      typeof (error as { statusCode?: unknown }).statusCode === 'number'
+        ? (error as { statusCode: number }).statusCode
+        : 500;
+
+    if (statusCode === 429) {
+      return reply.code(429).send({ error: 'Too many requests. Please try again later.' });
+    }
+    if (statusCode === 413 || (error as { code?: string }).code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
+      return reply.code(413).send({ error: `Request body too large (maximum ${MAX_REQUEST_BODY_BYTES / (1024 * 1024)} MB).` });
+    }
+    if ((error as { errno?: number }).errno === 1062 || (error as { code?: string }).code === 'ER_DUP_ENTRY') {
+      return reply.code(409).send({ error: 'Conflict: the record was modified concurrently, please try again.' });
+    }
+    if (statusCode >= 400 && statusCode < 500) {
+      const message = (error as { message?: string }).message ?? 'Invalid request.';
+      return reply.code(statusCode).send({ error: message });
+    }
+
+    request.log.error(error);
+    return reply.code(500).send({ error: 'Internal server error.' });
+  });
+
+  // Scope helper for the token-authenticated chat routes.
+  async function requireScope(request: FastifyRequest, scope: 'save' | 'retrieve'): Promise<ApiTokenAuth> {
+    const token = extractBearerToken(request);
+    if (!token) {
+      throw new ApiError(401, 'Authentication required: missing bearer token.');
+    }
+    const principal = await apiTokens.authenticate(token);
+    if (!principal) {
+      throw new ApiError(401, 'Invalid or revoked API token.');
+    }
+    if (!principal.scopes.includes(scope)) {
+      throw new ApiError(403, `Token is missing the required "${scope}" scope.`);
+    }
+    return principal;
+  }
 
   // Routes are registered inside `after` so the rate-limit plugin (registered
   // above) has loaded first and its per-route `onRoute` hook is applied.
@@ -233,6 +295,66 @@ export function buildApp(
         return reply.code(200).send({ ok: true });
       },
     );
+
+    // POST /api/v1/chats — save/upsert (scope: save).
+    app.post('/api/v1/chats', async (request, reply) => {
+      const principal = await requireScope(request, 'save');
+      const validation = validateChatSave(request.body);
+      if (!validation.ok) {
+        return reply.code(400).send({ errors: validation.errors });
+      }
+      const { sourceProvider, sourceChatId, title, messages, tags } = validation.value;
+      const { chatId } = await chats.upsert(
+        {
+          userId: principal.userId,
+          sourceProvider,
+          sourceChatId,
+          title: deriveChatTitle(title, messages),
+          messages,
+          tags,
+        },
+        { action: 'chat.save', tokenId: principal.tokenId, ipAddress: request.ip || 'unknown' },
+      );
+      return reply.code(200).send({ chatId });
+    });
+
+    // GET /api/v1/chats — list/search (scope: retrieve).
+    app.get('/api/v1/chats', async (request, reply) => {
+      const principal = await requireScope(request, 'retrieve');
+      const query = request.query as { q?: string; tag?: string; page?: string };
+
+      let page = 1;
+      if (query.page !== undefined) {
+        const parsed = Number(query.page);
+        if (!/^\d+$/.test(query.page) || !Number.isInteger(parsed) || parsed < 1) {
+          return reply.code(400).send({ error: 'page must be a positive integer.' });
+        }
+        page = parsed;
+      }
+
+      const q = query.q && query.q.trim() !== '' ? query.q : undefined;
+      const tag = query.tag && query.tag.trim() !== '' ? query.tag : undefined;
+
+      return chats.list(
+        { userId: principal.userId, q, tag, page, pageSize: 20 },
+        { action: 'chat.list', tokenId: principal.tokenId, ipAddress: request.ip || 'unknown' },
+      );
+    });
+
+    // GET /api/v1/chats/:id — raw chat data (scope: retrieve).
+    app.get('/api/v1/chats/:id', async (request) => {
+      const principal = await requireScope(request, 'retrieve');
+      const { id } = request.params as { id: string };
+      const chat = await chats.getById(
+        principal.userId,
+        id,
+        { action: 'chat.retrieve', tokenId: principal.tokenId, ipAddress: request.ip || 'unknown' },
+      );
+      if (!chat) {
+        throw new ApiError(404, 'Chat not found.');
+      }
+      return chat;
+    });
 
   });
 
