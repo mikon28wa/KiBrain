@@ -28,6 +28,18 @@ export const users = mysqlTable('users', {
 });
 
 /**
+ * Server-side login sessions (no JWT). The cookie stores the session token;
+ * the database stores only its SHA-256 hash.
+ */
+export const sessions = mysqlTable('sessions', {
+  id: varchar('id', { length: 36 }).primaryKey().$defaultFn(() => randomUUID()),
+  userId: varchar('user_id', { length: 36 }).notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+/**
  * Imported/created chats. `consent` records whether the user agreed to the
  * data being processed.
  */
@@ -125,6 +137,9 @@ export const auditLog = mysqlTable('audit_log', {
 // Inferred types
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
+
+export type Session = typeof sessions.$inferSelect;
+export type NewSession = typeof sessions.$inferInsert;
 
 export type Chat = typeof chats.$inferSelect;
 export type NewChat = typeof chats.$inferInsert;

@@ -8,6 +8,13 @@
       "when": 1792485409708,
       "tag": "0000_silly_strong_guy",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1792486962972,
+      "tag": "0001_orange_lady_bullseye",
+      "breakpoints": true
     }
   ]
 }

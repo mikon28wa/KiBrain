@@ -30,6 +30,7 @@ describe('drizzle migration', () => {
       'api_tokens',
       'password_reset_tokens',
       'audit_log',
+      'sessions',
     ]) {
       expect(sql).toContain(`CREATE TABLE \`${table}\``);
     }
@@ -37,8 +38,8 @@ describe('drizzle migration', () => {
 
   it('uses varchar(36) UUID primary keys for every table', () => {
     const sql = readMigrationSql();
-    // 7 tables, each with a varchar(36) id primary key
-    expect(sql.match(/`id` varchar\(36\) NOT NULL/g)).toHaveLength(7);
+    // 8 tables, each with a varchar(36) id primary key
+    expect(sql.match(/`id` varchar\(36\) NOT NULL/g)).toHaveLength(8);
     // no auto-increment integer ids remain
     expect(sql).not.toContain('AUTO_INCREMENT');
   });
