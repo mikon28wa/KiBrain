@@ -49,6 +49,9 @@ export const MAX_TAG_LENGTH = 64;
 /** Minimum password length for registration. */
 export const MIN_PASSWORD_LENGTH = 8;
 
+/** Maximum password size in bytes. bcrypt truncates input beyond 72 bytes. */
+export const MAX_PASSWORD_BYTES = 72;
+
 /**
  * Message roles supported by the `brain.chat.v1` import contract:
  * `user`, `assistant` and `system`.
@@ -59,7 +62,31 @@ export const MIN_PASSWORD_LENGTH = 8;
  */
 export const ALLOWED_ROLES: readonly string[] = ['user', 'assistant', 'system'];
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Returns `true` when `value` is a non-empty string matching the email format. */
+export function isValidEmail(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '' && EMAIL_REGEX.test(value);
+}
+
+/**
+ * Returns an error message when `value` violates the password policy, or
+ * `null` when it is acceptable. The policy requires a non-empty string of at
+ * least {@link MIN_PASSWORD_LENGTH} characters and at most
+ * {@link MAX_PASSWORD_BYTES} bytes (bcrypt truncates input beyond that).
+ */
+export function validatePassword(value: unknown): string | null {
+  if (typeof value !== 'string' || value === '') {
+    return 'password ist erforderlich';
+  }
+  if (value.length < MIN_PASSWORD_LENGTH) {
+    return `password muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein`;
+  }
+  if (Buffer.byteLength(value, 'utf8') > MAX_PASSWORD_BYTES) {
+    return `password darf maximal ${MAX_PASSWORD_BYTES} Bytes lang sein`;
+  }
+  return null;
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -175,13 +202,9 @@ export function validateBrainChatV1(
 
   // password (registration only)
   if (options.registration) {
-    if (typeof payload.password !== 'string' || payload.password === '') {
-      errors.push({ field: 'password', message: 'password ist erforderlich' });
-    } else if (payload.password.length < MIN_PASSWORD_LENGTH) {
-      errors.push({
-        field: 'password',
-        message: 'password muss mindestens 8 Zeichen lang sein',
-      });
+    const passwordError = validatePassword(payload.password);
+    if (passwordError) {
+      errors.push({ field: 'password', message: passwordError });
     }
   }
 

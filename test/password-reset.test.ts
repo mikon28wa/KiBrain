@@ -18,6 +18,7 @@ function createInMemoryRepo(users: TestUser[] = []) {
   const userList = [...users];
   const tokens = new Map<string, PasswordResetTokenRecord>();
   const passwordHashByUser = new Map<string, string>();
+  const sessions = new Map<string, string>(); // sessionId -> userId
 
   const repo: PasswordResetRepository = {
     async findUserByEmail(email) {
@@ -45,9 +46,14 @@ function createInMemoryRepo(users: TestUser[] = []) {
     async updateUserPassword(userId, passwordHash) {
       passwordHashByUser.set(userId, passwordHash);
     },
+    async deleteSessionsByUserId(userId) {
+      for (const [sessionId, ownerId] of sessions) {
+        if (ownerId === userId) sessions.delete(sessionId);
+      }
+    },
   };
 
-  return { repo, tokens, passwordHashByUser };
+  return { repo, tokens, passwordHashByUser, sessions };
 }
 
 function createMockMailer() {
@@ -154,5 +160,25 @@ describe('password reset service', () => {
     const result = await service.requestReset('unknown@example.com');
     expect(result.ok).toBe(true);
     expect(sent).toHaveLength(0);
+  });
+
+  it('invalidates all sessions for the user when the password is reset', async () => {
+    const { repo, sessions } = createInMemoryRepo([{ id: 'u1', email: 'u@example.com' }]);
+    const { mailer } = createMockMailer();
+    const service = createPasswordResetService({ repository: repo, mailer, hashPassword });
+
+    sessions.set('session-1', 'u1');
+    sessions.set('session-2', 'u1');
+
+    const token = generatePasswordResetToken();
+    await repo.createPasswordResetToken({
+      tokenHash: hashPasswordResetToken(token),
+      userId: 'u1',
+      expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+    });
+
+    const result = await service.resetPassword(token, 'newpass123');
+    expect(result.ok).toBe(true);
+    expect(sessions.size).toBe(0);
   });
 });

@@ -3,9 +3,11 @@ import {
   ALLOWED_ROLES,
   MAX_CHAT_BYTES,
   MAX_MESSAGE_BYTES,
+  MAX_PASSWORD_BYTES,
   MAX_TAG_LENGTH,
   MIN_PASSWORD_LENGTH,
   validateBrainChatV1,
+  validatePassword,
   type BrainChatMessage,
   type BrainChatV1Payload,
   type ValidationError,
@@ -43,6 +45,21 @@ function messagesTotalingExactly(targetBytes: number): BrainChatMessage[] {
 function errorFields(errors: ValidationError[]): string[] {
   return errors.map((e) => e.field);
 }
+
+describe('validatePassword', () => {
+  it('accepts a password of exactly 72 bytes', () => {
+    expect(validatePassword('a'.repeat(MAX_PASSWORD_BYTES))).toBeNull();
+  });
+
+  it('rejects a password longer than 72 bytes', () => {
+    expect(validatePassword('a'.repeat(MAX_PASSWORD_BYTES + 1))).toContain('Bytes');
+  });
+
+  it('counts bytes, not characters', () => {
+    // '😀' is 4 UTF-8 bytes: 19 chars = 76 bytes > 72.
+    expect(validatePassword('😀'.repeat(19))).toContain('Bytes');
+  });
+});
 
 describe('validateBrainChatV1', () => {
   describe('valid payloads', () => {
@@ -218,6 +235,15 @@ describe('validateBrainChatV1', () => {
       const result = validateBrainChatV1(validPayload({ password: 'short' }), {
         registration: true,
       });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(errorFields(result.errors)).toContain('password');
+    });
+
+    it('rejects a password longer than 72 bytes during registration', () => {
+      const result = validateBrainChatV1(
+        validPayload({ password: 'a'.repeat(MAX_PASSWORD_BYTES + 1) }),
+        { registration: true },
+      );
       expect(result.ok).toBe(false);
       if (!result.ok) expect(errorFields(result.errors)).toContain('password');
     });

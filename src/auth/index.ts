@@ -17,6 +17,13 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
   return bcrypt.compare(password, hash);
 }
 
+/**
+ * A dummy bcrypt hash compared against when the email is unknown, so login
+ * takes the same amount of time whether the account exists or not. This
+ * prevents timing-based email enumeration.
+ */
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync('dummy-password-for-timing', SALT_ROUNDS);
+
 // ---------------------------------------------------------------------------
 // Session tokens (opaque, not JWT)
 // ---------------------------------------------------------------------------
@@ -152,6 +159,9 @@ export function createAuthService(repository: AuthRepository): AuthService {
     async login(email, password) {
       const user = await repository.findUserByEmail(email);
       if (!user) {
+        // Perform a bcrypt comparison against a dummy hash so unknown emails
+        // cost the same as known ones (no timing side channel).
+        await verifyPassword(password, DUMMY_PASSWORD_HASH);
         return {
           ok: false,
           error: { code: 'INVALID_CREDENTIALS', message: 'E-Mail oder Passwort ist falsch' },

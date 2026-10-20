@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { db } from '../db';
-import { passwordResetTokens, users } from '../db/schema';
+import { passwordResetTokens, sessions, users } from '../db/schema';
 import type { Mailer } from './mailer';
 
 /** Password-reset tokens are valid for one hour. */
@@ -36,6 +36,8 @@ export interface PasswordResetRepository {
   findPasswordResetTokenByHash(tokenHash: string): Promise<PasswordResetTokenRecord | null>;
   markPasswordResetTokenUsed(tokenHash: string): Promise<void>;
   updateUserPassword(userId: string, passwordHash: string): Promise<void>;
+  /** Delete every session belonging to the user (revokes stolen cookies). */
+  deleteSessionsByUserId(userId: string): Promise<void>;
 }
 
 export type ResetPasswordResult =
@@ -108,6 +110,7 @@ export function createPasswordResetService(deps: PasswordResetDeps): PasswordRes
 
       const passwordHash = await hashPassword(newPassword);
       await repository.updateUserPassword(user.id, passwordHash);
+      await repository.deleteSessionsByUserId(user.id);
       await repository.markPasswordResetTokenUsed(tokenHash);
       return { ok: true };
     },
@@ -171,6 +174,10 @@ export function createDrizzlePasswordResetRepository(
 
     async updateUserPassword(userId, passwordHash) {
       await database.update(users).set({ passwordHash }).where(eq(users.id, userId));
+    },
+
+    async deleteSessionsByUserId(userId) {
+      await database.delete(sessions).where(eq(sessions.userId, userId));
     },
   };
 }
