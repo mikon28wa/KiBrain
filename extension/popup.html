@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>KiBrain Backup</title>
+    <style>
+      body { font-family: system-ui, sans-serif; width: 320px; padding: 12px; }
+      label { display: block; margin-bottom: 8px; font-size: 12px; }
+      input { width: 100%; box-sizing: border-box; padding: 6px; }
+      button { width: 100%; margin-top: 8px; padding: 8px; }
+      pre { white-space: pre-wrap; font-size: 11px; color: #333; }
+    </style>
+  </head>
+  <body>
+    <h3>KiBrain</h3>
+    <form id="config">
+      <label>
+        API endpoint
+        <input id="endpoint" type="url" placeholder="https://api.example.com" required />
+      </label>
+      <label>
+        API token (scope: save)
+        <input id="token" type="password" autocomplete="off" required />
+      </label>
+      <button type="submit">Save</button>
+    </form>
+    <button id="backup">Backup now</button>
+    <pre id="status"></pre>
+    <script src="popup.js"></script>
+  </body>
+</html>

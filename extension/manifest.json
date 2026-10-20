@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "KiBrain Backup",
+  "version": "0.1.0",
+  "description": "Back up conversations from visited platforms to your own KiBrain API.",
+  "permissions": ["alarms", "storage", "activeTab", "tabs", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
