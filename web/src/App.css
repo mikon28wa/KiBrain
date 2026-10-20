@@ -1,10 +1,119 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+.app {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: #f5f6f8;
 }
 
-.card {
-  padding: 2em;
+.auth-view {
+  width: 100%;
+  max-width: 400px;
+  background: #ffffff;
+  border: 1px solid #e3e6ea;
+  border-radius: 8px;
+  padding: 1.75rem;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
 }
+
+.auth-view h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+  color: #111827;
+}
+
+.auth-view p {
+  font-size: 0.95rem;
+  color: #374151;
+}
+
+.ai-notice {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #4b5563;
+  background: #f0f2f5;
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.field {
+  display: block;
+  margin-bottom: 0.9rem;
+}
+
+.field span {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.25rem;
+}
+
+.field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #ccd2da;
+  border-radius: 6px;
+  font-size: 1rem;
+  color: #111827;
+  background: #ffffff;
+}
+
+.field input:focus {
+  outline: 2px solid #2563eb;
+  outline-offset: -1px;
+  border-color: #2563eb;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.auth-view > button {
+  width: 100%;
+  padding: 0.65rem;
+  border: 0;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.auth-view > button:disabled {
+  background: #93b4f5;
+  cursor: default;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin-top: 0.9rem;
+}
+
+.row button {
+  border: 0;
+  background: none;
+  color: #2563eb;
+  font-size: 0.9rem;
+  padding: 0.25rem 0;
+}
+
+.error {
+  color: #b00020 !important;
+  font-size: 0.9rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
+.success {
+  color: #1a7f37 !important;
+  font-size: 0.9rem;
+  margin: 0.25rem 0 0.75rem;
+}
+
