@@ -1,0 +1,39 @@
+
+services:
+  # Module's OWN MySQL instance/schema (EU principle: no shared Brain DB).
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: kibrain_topic_dev
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Topic-module service. Built from the module's Dockerfile; all values via
+  # ENV, no secrets in code. The DB connection points at the module's own
+  # MySQL above; BRAIN_API_BASE_URL reaches the Brain core service.
+  topic-module:
+    build: .
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: kibrain_topic_dev
+      PORT: "3001"
+      BRAIN_API_BASE_URL: http://brain:3000
+    ports:
+      - "3001:3001"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

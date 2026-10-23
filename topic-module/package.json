@@ -1,0 +1,31 @@
+
+{
+  "name": "kibrain-topic-module",
+  "version": "0.1.0",
+  "description": "KiBrain topic-module - add-on service for thematic cataloguing of Brain chats (skeleton).",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "check": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.8",
+    "fastify": "^5.12.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^26.6.5",
+    "eslint": "^9.0.0",
+    "globals": "^16.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^3.2.7"
+  }
+}
